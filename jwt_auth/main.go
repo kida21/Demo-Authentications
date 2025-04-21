@@ -38,7 +38,11 @@ func Welcome(w http.ResponseWriter,r *http.Request){
    claims :=&Claims{}
 
    token,err:=jwt.ParseWithClaims(tokenStr,claims,func(t *jwt.Token) (any, error) {
-	return jwtKey,nil
+	  if _,ok:=t.Method.(*jwt.SigningMethodHMAC);!ok{
+		w.WriteHeader(http.StatusUnauthorized)
+		return nil,fmt.Errorf("unexpected signing method:%v",t.Header["alg"])
+	  }
+	 return jwtKey,nil
    })
    if err!=nil{
 	  if errors.Is(err,jwt.ErrSignatureInvalid){
@@ -58,5 +62,6 @@ func Welcome(w http.ResponseWriter,r *http.Request){
 func main() {
    http.HandleFunc("/signin",SignIn)
    http.HandleFunc("/welcome",Welcome)
+   http.HandleFunc("/refresh",Refresh)
    log.Fatal(http.ListenAndServe(":8080",nil))
 }
