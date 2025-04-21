@@ -1,13 +1,14 @@
 package main
 
 import (
-	"encoding/json"
+	
+	"errors"
+	"fmt"
 	"log"
 	"net/http"
-	 "os"
-	"time"
-     "github.com/golang-jwt/jwt/v5"
 	
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 var users = map[string]string{
@@ -23,45 +24,39 @@ type Claims struct{
 	Username string `json:"username"`
 	jwt.RegisteredClaims
 }
-
-func SignIn(w http.ResponseWriter,r *http.Request){
-    var creds Credentials
-	err:=json.NewDecoder(r.Body).Decode(&creds)
-	if err!=nil{
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	expectedPassword,ok:=users[creds.Username]
-	if !ok || expectedPassword != creds.Password{
+func Welcome(w http.ResponseWriter,r *http.Request){
+   c,err:= r.Cookie("token")
+   if err!= nil{
+	if errors.Is(err,http.ErrNoCookie){
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-	expirationTime := time.Now().Add(time.Minute * 5)
-	claims := &Claims{
-       Username: creds.Username,
-	   RegisteredClaims: jwt.RegisteredClaims{
-		ExpiresAt:jwt.NewNumericDate(expirationTime),
-	   },
+	w.WriteHeader(http.StatusBadRequest)
+	return
+   }
+   tokenStr:=c.Value
+   claims :=&Claims{}
+
+   token,err:=jwt.ParseWithClaims(tokenStr,claims,func(t *jwt.Token) (any, error) {
+	return jwtKey,nil
+   })
+   if err!=nil{
+	  if errors.Is(err,jwt.ErrSignatureInvalid){
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	  }
+	  w.WriteHeader(http.StatusBadRequest)
+	  return
 	}
-	jwtKey:=[]byte(os.Getenv("SECRET_KEY"))
-	 token:=jwt.NewWithClaims(jwt.SigningMethodHS256,claims)
-	    tokenStr,err:=token.SignedString(jwtKey)
-		if err!=nil{
-			log.Println(err)
-		   w.WriteHeader(http.StatusInternalServerError)
-		   return
-		}
-		http.SetCookie(w,&http.Cookie{
-			Name: "token",
-			Value: tokenStr,
-			Expires: expirationTime,
-
-		})
-	 
+	if !token.Valid{
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	w.Write([]byte(fmt.Sprintf("Welcome,%s",claims.Username)))
 }
-
 
 func main() {
    http.HandleFunc("/signin",SignIn)
+   http.HandleFunc("/welcome",Welcome)
    log.Fatal(http.ListenAndServe(":8080",nil))
 }
